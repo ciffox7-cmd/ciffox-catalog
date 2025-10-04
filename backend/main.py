@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, status, File, UploadFile, Form
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
 from sqlalchemy.ext.declarative import declarative_base
@@ -22,6 +22,7 @@ from googleapiclient.http import MediaFileUpload
 import aiofiles
 from PIL import Image
 import io
+import httpx
 
 # Initialize FastAPI
 app = FastAPI(title="Product Catalog API", version="1.0.0")
@@ -241,7 +242,8 @@ async def login(login_data: LoginRequest):
     """Admin login"""
     admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
     
-    if not verify_password(login_data.password, get_password_hash(admin_password)):
+    # Simple password check for now (bypass bcrypt issues)
+    if login_data.password != admin_password:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect password"
@@ -354,6 +356,28 @@ async def upload_product_image(
         return {"image_url": image_url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upload image: {str(e)}")
+
+
+@app.get("/api/proxy-image")
+async def proxy_image(url: str):
+    """Proxy Google Drive images to bypass CORS restrictions"""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, timeout=30.0)
+            if response.status_code == 200:
+                return StreamingResponse(
+                    io.BytesIO(response.content),
+                    media_type=response.headers.get("content-type", "image/jpeg"),
+                    headers={
+                        "Cache-Control": "public, max-age=3600",
+                        "Access-Control-Allow-Origin": "*"
+                    }
+                )
+            else:
+                raise HTTPException(status_code=response.status_code, detail="Failed to fetch image")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+
 
 # Mount static files
 import os

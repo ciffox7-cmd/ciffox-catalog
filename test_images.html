@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Image Test</title>
+</head>
+<body>
+    <h1>Testing Product Images</h1>
+    <div>
+        <h2>Test Image 1:</h2>
+        <img src="http://localhost:8000/static/IMG-20251003-WA0003.jpg" alt="Test 1" style="width: 200px; height: 200px; object-fit: cover;">
+    </div>
+    <div>
+        <h2>Test Image 2:</h2>
+        <img src="http://localhost:8000/static/IMG-20251003-WA0004.jpg" alt="Test 2" style="width: 200px; height: 200px; object-fit: cover;">
+    </div>
+    <div>
+        <h2>Test Image 3:</h2>
+        <img src="http://localhost:8000/static/IMG-20251003-WA0005.jpg" alt="Test 3" style="width: 200px; height: 200px; object-fit: cover;">
+    </div>
+    <div>
+        <h2>API Test:</h2>
+        <button onclick="testAPI()">Test API</button>
+        <div id="apiResult"></div>
+    </div>
+    
+    <script>
+        async function testAPI() {
+            try {
+                const response = await fetch('http://localhost:8000/api/products');
+                const products = await response.json();
+                document.getElementById('apiResult').innerHTML = 
+                    `<p>Found ${products.length} products</p>
+                     <p>First product image: ${products[0].image_url}</p>
+                     <img src="http://localhost:8000${products[0].image_url}" alt="API Image" style="width: 200px; height: 200px; object-fit: cover;">`;
+            } catch (error) {
+                document.getElementById('apiResult').innerHTML = `<p>Error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>
