@@ -54,24 +54,24 @@ class Product(Base):
     __tablename__ = "products"
     
     id = Column(Integer, primary_key=True, index=True)
-    article = Column(String, index=True)
-    colour = Column(String)
-    size = Column(String)
-    pair = Column(String)
-    price = Column(String)
-    image_url = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    article = Column(String, index=True, nullable=True)
+    colour = Column(String, nullable=True)
+    size = Column(String, nullable=True)
+    pair = Column(String, nullable=True)
+    price = Column(String, nullable=True)
+    image_url = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
 
 # Create tables
 Base.metadata.create_all(bind=engine)
 
 # Pydantic models
 class ProductCreate(BaseModel):
-    article: str
-    colour: str
-    size: str
-    pair: str
+    article: Optional[str] = None
+    colour: Optional[str] = None
+    size: Optional[str] = None
+    pair: Optional[str] = None
     price: Optional[str] = None
 
 class ProductUpdate(BaseModel):
@@ -83,14 +83,17 @@ class ProductUpdate(BaseModel):
 
 class ProductResponse(BaseModel):
     id: int
-    article: str
-    colour: str
-    size: str
-    pair: str
+    article: Optional[str] = None
+    colour: Optional[str] = None
+    size: Optional[str] = None
+    pair: Optional[str] = None
     price: Optional[str] = None
     image_url: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
 
 class LoginRequest(BaseModel):
     password: str
@@ -263,10 +266,10 @@ async def get_products(db: Session = Depends(get_db)):
 
 @app.post("/api/products", response_model=ProductResponse)
 async def create_product(
-    article: str = Form(...),
-    colour: str = Form(...),
-    size: str = Form(...),
-    pair: str = Form(...),
+    article: str = Form(None),
+    colour: str = Form(None),
+    size: str = Form(None),
+    pair: str = Form(None),
     price: str = Form(None),
     image: UploadFile = File(None),
     db: Session = Depends(get_db),
@@ -362,7 +365,7 @@ async def upload_product_image(
 async def proxy_image(url: str):
     """Proxy Google Drive images to bypass CORS restrictions"""
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
             response = await client.get(url, timeout=30.0)
             if response.status_code == 200:
                 return StreamingResponse(
@@ -378,12 +381,59 @@ async def proxy_image(url: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
 
+@app.get("/api/product-image/{filename}")
+async def get_product_image(filename: str):
+    """Serve product images - check database for Google Drive URLs first, then local files"""
+    try:
+        # First, check if this filename corresponds to a product with a Google Drive URL
+        db = next(get_db())
+        try:
+            product = db.query(Product).filter(Product.image_url == filename).first()
+            if product and product.image_url and product.image_url.startswith('https://drive.google.com'):
+                # Return a redirect to the Google Drive URL
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url=product.image_url, status_code=302)
+        except Exception as e:
+            print(f"Database query error: {e}")
+        finally:
+            db.close()
+        
+        # Fallback: Check if the image exists in the Products directory
+        image_path = f"Products/{filename}"
+        if os.path.exists(image_path):
+            return FileResponse(
+                image_path,
+                media_type="image/jpeg",
+                headers={
+                    "Cache-Control": "public, max-age=3600",
+                    "Access-Control-Allow-Origin": "*"
+                }
+            )
+        else:
+            # Fallback to placeholder if image doesn't exist
+            return FileResponse("static/placeholder.jpg", media_type="image/jpeg")
+    except Exception as e:
+        # Return placeholder on any error
+        return FileResponse("static/placeholder.jpg", media_type="image/jpeg")
+
 
 # Mount static files
 import os
-static_dir = "static"
-if not os.path.exists(static_dir):
-    os.makedirs(static_dir)
+# Try different static directory paths
+static_dir = None
+possible_paths = ["static", "../static", "backend/static", "../backend/static"]
+
+for path in possible_paths:
+    if os.path.exists(path):
+        static_dir = path
+        break
+
+if not static_dir:
+    # Create static directory if none exists
+    static_dir = "static"
+    os.makedirs(static_dir, exist_ok=True)
+
+print(f"Serving static files from: {os.path.abspath(static_dir)}")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 if __name__ == "__main__":
