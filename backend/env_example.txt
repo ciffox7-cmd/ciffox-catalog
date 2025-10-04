@@ -1,0 +1,12 @@
+# Admin credentials
+ADMIN_PASSWORD=admin123
+
+# Google Drive API credentials
+GOOGLE_DRIVE_FOLDER_ID=your_folder_id_here
+GOOGLE_CREDENTIALS_FILE=credentials.json
+
+# JWT secret
+JWT_SECRET_KEY=your-secret-key-here
+
+# Database
+DATABASE_URL=sqlite:///./catalog.db
